@@ -1,0 +1,31 @@
+# Dependency directories
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+client/dist/
+
+# Local env files
+.env
+.env.local
+.env.*.local
+client/.env
+server/.env
+
+# Local DB data
+mongodb_data/
+database_import/
+
+# System and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.agents/
+.gemini/
+
+# Large files / media
+*.gif
+*.mp4

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 70" width="240" height="70">
+  <defs>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#16a34a" />
+      <stop offset="100%" stop-color="#15803d" />
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <!-- Icon Group: Leaf & Circle -->
+  <circle cx="35" cy="35" r="24" fill="url(#leafGrad)" opacity="0.15" />
+  <path d="M35 15 C45 25, 45 45, 35 55 C25 45, 25 25, 35 15 Z" fill="url(#leafGrad)" />
+  <path d="M35 25 C40 30, 40 40, 35 45" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none" />
+  <!-- Small glowing seed -->
+  <circle cx="35" cy="35" r="4" fill="url(#amberGrad)" />
+
+  <!-- Brand Text -->
+  <text x="75" y="40" font-family="'Outfit', 'Poppins', 'Segoe UI', sans-serif" font-size="28" font-weight="800" fill="#112b1a" letter-spacing="0.5">
+    Desi<tspan fill="#16a34a">Kit</tspan>
+  </text>
+  
+  <!-- Subtitle -->
+  <text x="75" y="55" font-family="'Poppins', sans-serif" font-size="10" font-weight="600" fill="#f59e0b" letter-spacing="2">
+    FARM-TO-HOME
+  </text>
+</svg>
