@@ -125,10 +125,15 @@ const ProductDisplayPage = () => {
         </div>
 
 
-        <div className='p-4 lg:pl-7 text-base lg:text-lg'>
-            <p className='bg-green-300 w-fit px-2 rounded-full'>10 Min</p>
-            <h2 className='text-lg font-semibold lg:text-3xl'>{data.name}</h2>  
-            <p className=''>{data.unit}</p> 
+        <div className='p-4 lg:pl-7 text-base lg:text-lg space-y-2'>
+            <div className='flex gap-2 items-center flex-wrap'>
+                <p className='bg-green-300 text-green-950 font-bold w-fit px-2.5 py-0.5 rounded-full text-xs'>10 Min</p>
+                <div className='bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold w-fit px-3 py-0.5 rounded-full text-xs flex items-center gap-1.5 shadow-sm'>
+                    <span>🚜</span> {data.farm_name || 'DesiKit Partner Farm'}
+                </div>
+            </div>
+            <h2 className='text-lg font-bold lg:text-3xl text-desikit-dark'>{data.name}</h2>  
+            <p className='text-sm text-gray-500 font-semibold'>{data.unit}</p> 
             <Divider/>
             <div>
               <p className=''>Price</p> 

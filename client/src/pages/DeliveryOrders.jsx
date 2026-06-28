@@ -27,95 +27,160 @@ const DeliveryOrders = () => {
         fetchOrders();
     }, []);
 
-    // Draw the Smart Route Optimization Canvas
+    const mapRef = useRef(null);
+    const markerRef = useRef(null);
+    const farmMarkerRef = useRef(null);
+    const destMarkerRef = useRef(null);
+    const polylineRef = useRef(null);
+    const [leafletLoaded, setLeafletLoaded] = useState(false);
+    
+    const [riderCoords, setRiderCoords] = useState({ lat: 31.2519, lon: 75.7037 });
+    const [farmCoords, setFarmCoords] = useState({ lat: 31.2560, lon: 75.7050 });
+    const [destCoords, setDestCoords] = useState({ lat: 31.2480, lon: 75.7010 });
+
+    // Load Leaflet Script
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-
-        // Draw Map grid
-        ctx.fillStyle = '#fafdfa';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.strokeStyle = '#e2ebd9';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 20) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let j = 0; j < canvas.height; j += 20) {
-            ctx.beginPath();
-            ctx.moveTo(0, j);
-            ctx.lineTo(canvas.width, j);
-            ctx.stroke();
+        const linkId = 'leaflet-css';
+        if (!document.getElementById(linkId)) {
+            const link = document.createElement('link');
+            link.id = linkId;
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
         }
 
-        // Draw Hub (Barn)
-        const hubX = 80;
-        const hubY = 100;
-        ctx.fillStyle = '#16a34a';
-        ctx.beginPath();
-        ctx.arc(hubX, hubY, 12, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px sans-serif';
-        ctx.fillText('🌾', hubX - 6, hubY + 4);
+        const scriptId = 'leaflet-js';
+        if (!document.getElementById(scriptId)) {
+            const script = document.createElement('script');
+            script.id = scriptId;
+            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            script.onload = () => setLeafletLoaded(true);
+            document.body.appendChild(script);
+        } else {
+            if (window.L) setLeafletLoaded(true);
+        }
+    }, []);
 
-        // Draw Customer Drops
-        const drop1X = 220;
-        const drop1Y = 50;
-        const drop2X = 340;
-        const drop2Y = 120;
+    // Geocode active order coordinates
+    useEffect(() => {
+        const activeOrder = orders.find(o => o.status === 'out_for_delivery');
+        if (!activeOrder) return;
 
-        // Drop 1
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath();
-        ctx.arc(drop1X, drop1Y, 10, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '8px sans-serif';
-        ctx.fillText('1', drop1X - 3, drop1Y + 3);
-
-        // Drop 2
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath();
-        ctx.arc(drop2X, drop2Y, 10, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '8px sans-serif';
-        ctx.fillText('2', drop2X - 3, drop2Y + 3);
-
-        // Draw optimized path lines
-        ctx.strokeStyle = '#2563eb'; // blue optimized route line
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(hubX, hubY);
-        ctx.lineTo(drop1X, drop1Y);
-        ctx.lineTo(drop2X, drop2Y);
-        ctx.stroke();
-
-        // Labels
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 9px sans-serif';
-        ctx.fillText('Sahiwal Farm Hub', hubX - 40, hubY + 25);
-        ctx.fillText('Drop #1 (Priority: Dairy)', drop1X - 50, drop1Y - 15);
-        ctx.fillText('Drop #2 (Vegetables)', drop2X - 45, drop2Y + 25);
-
+        const geocode = async () => {
+            try {
+                if (activeOrder.farm_address) {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(activeOrder.farm_address + ", India")}&format=json&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        setFarmCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+                    }
+                }
+                if (activeOrder.delivery_address) {
+                    const addrStr = `${activeOrder.delivery_address.address_line || ''}, ${activeOrder.delivery_address.city || ''}, India`;
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addrStr)}&format=json&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        setDestCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+                    }
+                }
+            } catch (err) {
+                console.error("Rider side geocoding failed:", err);
+            }
+        };
+        geocode();
     }, [orders]);
 
+    // Initialize Map and Markers
     useEffect(() => {
-        const hasActiveDelivery = orders.some(o => o.status === 'out_for_delivery');
-        if (!hasActiveDelivery || !navigator.geolocation) return;
+        if (!leafletLoaded || !window.L) return;
+
+        const mapContainerId = 'rider-route-map';
+        const container = document.getElementById(mapContainerId);
+        if (!container) return;
+
+        if (!mapRef.current) {
+            mapRef.current = window.L.map(mapContainerId).setView([riderCoords.lat, riderCoords.lon], 14);
+
+            window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(mapRef.current);
+
+            farmMarkerRef.current = window.L.marker([farmCoords.lat, farmCoords.lon], {
+                icon: window.L.divIcon({
+                    html: '<span style="font-size: 24px;">🌾</span>',
+                    className: 'dummy-class',
+                    iconSize: [24, 24]
+                })
+            }).addTo(mapRef.current).bindPopup('Farm Pickup');
+
+            destMarkerRef.current = window.L.marker([destCoords.lat, destCoords.lon], {
+                icon: window.L.divIcon({
+                    html: '<span style="font-size: 24px;">🏠</span>',
+                    className: 'dummy-class',
+                    iconSize: [24, 24]
+                })
+            }).addTo(mapRef.current).bindPopup('Customer Destination');
+
+            markerRef.current = window.L.marker([riderCoords.lat, riderCoords.lon], {
+                icon: window.L.divIcon({
+                    html: '<span style="font-size: 28px;">🛵</span>',
+                    className: 'dummy-class',
+                    iconSize: [28, 28]
+                })
+            }).addTo(mapRef.current).bindPopup('Your Live Location').openPopup();
+
+            polylineRef.current = window.L.polyline([
+                [farmCoords.lat, farmCoords.lon],
+                [riderCoords.lat, riderCoords.lon],
+                [destCoords.lat, destCoords.lon]
+            ], { color: '#2563eb', weight: 4, dashArray: '5, 5' }).addTo(mapRef.current);
+        } else {
+            if (farmMarkerRef.current) farmMarkerRef.current.setLatLng([farmCoords.lat, farmCoords.lon]);
+            if (destMarkerRef.current) destMarkerRef.current.setLatLng([destCoords.lat, destCoords.lon]);
+            if (markerRef.current) {
+                markerRef.current.setLatLng([riderCoords.lat, riderCoords.lon]);
+                mapRef.current.panTo([riderCoords.lat, riderCoords.lon]);
+            }
+            if (polylineRef.current) {
+                polylineRef.current.setLatLngs([
+                    [farmCoords.lat, farmCoords.lon],
+                    [riderCoords.lat, riderCoords.lon],
+                    [destCoords.lat, destCoords.lon]
+                ]);
+            }
+        }
+    }, [leafletLoaded, riderCoords, farmCoords, destCoords]);
+
+
+    useEffect(() => {
+        const activeOrder = orders.find(o => o.status === 'out_for_delivery');
+        if (!activeOrder || !navigator.geolocation) return;
+
+        // Initialize Socket connection
+        let socketInstance = null;
+        if (window.io) {
+            socketInstance = window.io(import.meta.env.VITE_API_URL || 'http://localhost:8080');
+            socketInstance.emit('joinOrderTracker', activeOrder.orderId);
+        }
 
         const handleSuccess = async (position) => {
             const { latitude, longitude } = position.coords;
+            setRiderCoords({ lat: latitude, lon: longitude });
             try {
+                // Keep backend REST updated (for persistence/refreshes)
                 await Axios.put('/api/delivery/location', {
                     lat: latitude,
                     lng: longitude
                 });
+
+                // Emit real-time update via socket for instant client movement
+                if (socketInstance) {
+                    socketInstance.emit('riderLocationUpdate', {
+                        orderId: activeOrder.orderId,
+                        lat: latitude,
+                        lng: longitude
+                    });
+                }
             } catch (err) {
                 console.error("Failed to update rider location:", err);
             }
@@ -123,16 +188,20 @@ const DeliveryOrders = () => {
 
         const handleError = (error) => {
             console.error("Error watching geolocation:", error);
+            toast.error("GPS Access Denied. Please enable location permissions for real-time tracking.");
         };
 
         const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
             enableHighAccuracy: true,
-            maximumAge: 10000,
+            maximumAge: 5000,
             timeout: 5000
         });
 
         return () => {
             navigator.geolocation.clearWatch(watchId);
+            if (socketInstance) {
+                socketInstance.disconnect();
+            }
         };
     }, [orders]);
 
@@ -206,8 +275,12 @@ const DeliveryOrders = () => {
                     <h3 className="text-lg font-bold text-desikit-dark flex items-center gap-2">
                         <FaRoute className="text-desikit-green" /> Smart Route Clustering & Optimization
                     </h3>
-                    <div className="bg-gray-50 border rounded-2xl overflow-hidden flex justify-center">
-                        <canvas ref={canvasRef} width={450} height={180} className="w-full max-w-[450px] h-[180px]" />
+                    <div id="rider-route-map" className="h-[250px] w-full rounded-xl border z-10" style={{ minHeight: '250px' }}>
+                        {!leafletLoaded && (
+                            <div className="h-full flex items-center justify-center bg-gray-50 text-xs font-semibold text-gray-400">
+                                Initializing Live GPS Route Map...
+                            </div>
+                        )}
                     </div>
                 </div>
                 <div className="space-y-4 flex flex-col justify-center">

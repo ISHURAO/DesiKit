@@ -219,6 +219,27 @@ export async function loginController(request, response) {
             last_login_date: new Date()
         })
 
+        // Notify client on successful login
+        try {
+            await sendEmail({
+                sendTo: user.email,
+                subject: "Security Alert: DesiKit Account Login",
+                html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; rounded-lg: 12px;">
+                    <h2 style="color: #16a34a; text-align: center;">Account Login Alert</h2>
+                    <p>Dear ${user.name},</p>
+                    <p>Your DesiKit account was logged into on <strong>${new Date().toLocaleString()}</strong>.</p>
+                    <p>If this was you, no action is required. If this wasn't you, please secure your account by resetting your password immediately.</p>
+                    <br/>
+                    <p>Thank you,</p>
+                    <p><strong>DesiKit Team</strong></p>
+                </div>
+                `
+            });
+        } catch (mailErr) {
+            console.error("Login alert email error:", mailErr);
+        }
+
         const cookieOption = {
             httpOnly: true,
             secure: true,

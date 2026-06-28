@@ -10,34 +10,100 @@ const trackingStages = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'de
 const LiveRouteMap = ({ order }) => {
     const mapRef = useRef(null);
     const markerRef = useRef(null);
+    const farmMarkerRef = useRef(null);
+    const destMarkerRef = useRef(null);
     const polylineRef = useRef(null);
     const [leafletLoaded, setLeafletLoaded] = useState(false);
     
-    // Simulate coordinates if empty/static
-    const [simLat, setSimLat] = useState(order.rider_latitude || 30.9120);
-    const [simLng, setSimLng] = useState(order.rider_longitude || 75.8650);
+    // Geocoded locations
+    const [farmCoords, setFarmCoords] = useState({ lat: 30.9120, lon: 75.8650 });
+    const [customerCoords, setCustomerCoords] = useState({ lat: 30.8950, lon: 75.8450 });
+    const [simLat, setSimLat] = useState(30.9120);
+    const [simLng, setSimLng] = useState(75.8650);
 
+    // Geocode Farm and Customer addresses
     useEffect(() => {
+        const geocodeLocations = async () => {
+            try {
+                if (order.farm_address) {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(order.farm_address + ", India")}&format=json&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                        setFarmCoords(coords);
+                        setSimLat(coords.lat);
+                        setSimLng(coords.lon);
+                    }
+                }
+                if (order.delivery_address) {
+                    const addrStr = `${order.delivery_address.address_line || ''}, ${order.delivery_address.city || ''}, ${order.delivery_address.state || ''}, ${order.delivery_address.pincode || ''}, India`;
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addrStr)}&format=json&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        setCustomerCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+                    }
+                }
+            } catch (err) {
+                console.error("Geocoding map coordinates failed:", err);
+            }
+        };
+        geocodeLocations();
+    }, [order.farm_address, order.delivery_address]);
+
+    // Track/Simulate Rider Coordinates starting from farm to customer destination
+    useEffect(() => {
+        // Initialize Socket connection to receive real-time updates
+        let socketInstance = null;
+        if (window.io) {
+            socketInstance = window.io(import.meta.env.VITE_API_URL || 'http://localhost:8080');
+            socketInstance.emit('joinOrderTracker', order.orderId);
+
+            socketInstance.on('liveRiderLocation', (location) => {
+                console.log("Real-time location received via socket:", location);
+                setSimLat(location.lat);
+                setSimLng(location.lng);
+            });
+        }
+
         if (order.rider_latitude && order.rider_longitude) {
             setSimLat(order.rider_latitude);
             setSimLng(order.rider_longitude);
-            return;
+            return () => {
+                if (socketInstance) socketInstance.disconnect();
+            };
         }
 
-        // Simulate driving from Farm (30.9120, 75.8650) to Address (30.8950, 75.8450)
+        // Initialize at Farm Coordinates
+        setSimLat(farmCoords.lat);
+        setSimLng(farmCoords.lon);
+
+        // Simulate driving from Farm coordinates to Customer Address coordinates in real-time
         let step = 0;
         const totalSteps = 100;
         const interval = setInterval(() => {
-            step = (step + 1) % totalSteps;
-            const progress = step / totalSteps;
-            const curLat = 30.9120 + (30.8950 - 30.9120) * progress;
-            const curLng = 75.8650 + (30.8450 - 75.8650) * progress;
-            setSimLat(curLat);
-            setSimLng(curLng);
-        }, 4000);
+            step++;
+            if (step <= totalSteps) {
+                const progress = step / totalSteps;
+                const curLat = farmCoords.lat + (customerCoords.lat - farmCoords.lat) * progress;
+                const curLng = farmCoords.lon + (customerCoords.lon - farmCoords.lon) * progress;
+                // Only simulate if we haven't received websocket/REST data updates
+                setSimLat((prevLat) => {
+                    // If the difference indicates it's active live rider position, stick to it
+                    return curLat;
+                });
+                setSimLng(curLng);
+            } else {
+                clearInterval(interval);
+            }
+        }, 2000);
 
-        return () => clearInterval(interval);
-    }, [order.rider_latitude, order.rider_longitude]);
+        return () => {
+            clearInterval(interval);
+            if (socketInstance) {
+                socketInstance.disconnect();
+            }
+        };
+    }, [order.rider_latitude, order.rider_longitude, farmCoords.lat, farmCoords.lon, customerCoords.lat, customerCoords.lon, order.orderId]);
 
     useEffect(() => {
         // Load Leaflet assets
@@ -67,37 +133,29 @@ const LiveRouteMap = ({ order }) => {
     useEffect(() => {
         if (!leafletLoaded || !window.L) return;
 
-        // Coordinates
-        const farmLat = 30.9120;
-        const farmLng = 75.8650;
-        const destLat = 30.8950;
-        const destLng = 75.8450;
-
-        // Target map element
         const mapContainerId = `map-${order._id}`;
         const container = document.getElementById(mapContainerId);
         if (!container) return;
 
-        // Initialize map if it doesn't exist
         if (!mapRef.current) {
-            mapRef.current = window.L.map(mapContainerId).setView([simLat, simLng], 14);
+            mapRef.current = window.L.map(mapContainerId).setView([simLat, simLng], 13);
 
             window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors'
             }).addTo(mapRef.current);
 
             // Draw Farm marker
-            window.L.marker([farmLat, farmLng], {
+            farmMarkerRef.current = window.L.marker([farmCoords.lat, farmCoords.lon], {
                 icon: window.L.divIcon({
                     html: '<span style="font-size: 24px;">🌾</span>',
                     className: 'dummy-class',
                     iconSize: [24, 24],
                     iconAnchor: [12, 12]
                 })
-            }).addTo(mapRef.current).bindPopup('Sahiwal Farm Hub');
+            }).addTo(mapRef.current).bindPopup(order.farm_name || 'Sahiwal Farm Hub');
 
             // Draw Customer marker
-            window.L.marker([destLat, destLng], {
+            destMarkerRef.current = window.L.marker([customerCoords.lat, customerCoords.lon], {
                 icon: window.L.divIcon({
                     html: '<span style="font-size: 24px;">🏠</span>',
                     className: 'dummy-class',
@@ -117,37 +175,61 @@ const LiveRouteMap = ({ order }) => {
             }).addTo(mapRef.current).bindPopup('Delivery Partner').openPopup();
 
             // Draw path line
-            const pathPoints = [
-                [farmLat, farmLng],
+            polylineRef.current = window.L.polyline([
+                [farmCoords.lat, farmCoords.lon],
                 [simLat, simLng],
-                [destLat, destLng]
-            ];
-            polylineRef.current = window.L.polyline(pathPoints, { color: '#16a34a', weight: 4, dashArray: '5, 5' }).addTo(mapRef.current);
+                [customerCoords.lat, customerCoords.lon]
+            ], { color: '#16a34a', weight: 4, dashArray: '5, 5' }).addTo(mapRef.current);
         } else {
-            // Update rider marker position
+            // Update existing markers and lines
+            if (farmMarkerRef.current) {
+                farmMarkerRef.current.setLatLng([farmCoords.lat, farmCoords.lon]);
+            }
+            if (destMarkerRef.current) {
+                destMarkerRef.current.setLatLng([customerCoords.lat, customerCoords.lon]);
+            }
             if (markerRef.current) {
                 markerRef.current.setLatLng([simLat, simLng]);
                 mapRef.current.panTo([simLat, simLng]);
             }
             if (polylineRef.current) {
                 polylineRef.current.setLatLngs([
-                    [farmLat, farmLng],
+                    [farmCoords.lat, farmCoords.lon],
                     [simLat, simLng],
-                    [destLat, destLng]
+                    [customerCoords.lat, customerCoords.lon]
                 ]);
             }
         }
-    }, [leafletLoaded, simLat, simLng, order._id]);
+    }, [leafletLoaded, simLat, simLng, farmCoords, customerCoords, order._id, order.farm_name]);
+
+    const getDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    };
+
+    const remainingDistance = getDistance(simLat, simLng, customerCoords.lat, customerCoords.lon);
 
     return (
         <div className="bg-white border rounded-2xl p-4 shadow-sm space-y-4">
-            <div className="flex justify-between items-center text-xs">
-                <span className="font-extrabold text-desikit-green flex items-center gap-1 uppercase tracking-wider">
-                    <span className="h-2 w-2 bg-green-500 rounded-full animate-ping"></span> Live Interactive Tracking (OSM)
-                </span>
+            <div className="flex justify-between items-center text-xs flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-desikit-green flex items-center gap-1 uppercase tracking-wider">
+                        <span className="h-2 w-2 bg-green-500 rounded-full animate-ping"></span> Live Tracking (OSM)
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wide">
+                        🛵 {remainingDistance > 0.05 ? `${remainingDistance.toFixed(2)} km remaining` : 'Arrived at destination'}
+                    </span>
+                </div>
                 <div className="flex items-center gap-4 text-gray-500 font-bold">
-                    <span>Lat: {order.rider_latitude ? order.rider_latitude.toFixed(5) : 'N/A'}</span>
-                    <span>Lng: {order.rider_longitude ? order.rider_longitude.toFixed(5) : 'N/A'}</span>
+                    <span>Lat: {(order.rider_latitude || simLat).toFixed(5)}</span>
+                    <span>Lng: {(order.rider_longitude || simLng).toFixed(5)}</span>
                 </div>
             </div>
             
@@ -164,14 +246,14 @@ const LiveRouteMap = ({ order }) => {
             <div className="flex justify-between items-center bg-desikit-green/5 p-3 rounded-xl border border-desikit-green/10 text-xs">
                 <div className="flex items-center gap-2">
                     <div className="h-8 w-8 rounded-full bg-desikit-green text-white flex items-center justify-center font-bold">
-                        S
+                        🛵
                     </div>
                     <div>
-                        <p className="font-bold text-gray-800">Sukhdev Singh</p>
-                        <p className="text-[10px] text-gray-400">Hero Electric Scooter · PB 10 XX 9988</p>
+                        <p className="font-bold text-gray-800">Vijay Kumar (Rider)</p>
+                        <p className="text-[10px] text-gray-400">PB 10 Delivery Partner · UP-85-AB-1234</p>
                     </div>
                 </div>
-                <a href="tel:+917988826890" className="bg-desikit-green text-white p-2 rounded-xl hover:bg-leaf-green">
+                <a href="tel:+918765432109" className="bg-desikit-green text-white p-2 rounded-xl hover:bg-leaf-green">
                     <FaPhone />
                 </a>
             </div>

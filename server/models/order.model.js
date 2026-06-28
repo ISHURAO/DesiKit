@@ -111,6 +111,12 @@ const orderSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// Optimize database indexes for heavy order queries at scale
+orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ delivery_partner_id: 1, status: 1 });
+orderSchema.index({ status: 1 });
+orderSchema.index({ orderId: 1 }, { unique: true });
+
 const OrderModel = mongoose.model('order', orderSchema);
 
 export default OrderModel;

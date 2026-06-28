@@ -84,6 +84,11 @@ productSchema.index({
     }
 })
 
+// Query performance optimization indexes for high traffic
+productSchema.index({ category: 1, status: 1 });
+productSchema.index({ subCategory: 1, status: 1 });
+productSchema.index({ farmer_id: 1 });
+
 const ProductModel = mongoose.model('product',productSchema)
 
-export default ProductModel
+export default ProductModel;

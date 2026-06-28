@@ -23,9 +23,9 @@ const CardProduct = ({data}) => {
                 className='w-full h-full object-scale-down lg:scale-125'
             />
       </div>
-      <div className='flex items-center gap-1'>
-        <div className='rounded text-xs w-fit p-[1px] px-2 text-desikit-green bg-desikit-soft font-bold'>
-              Direct Farm 
+      <div className='flex items-center gap-1 flex-wrap'>
+        <div className='rounded text-[10px] w-fit p-[2px] px-2 text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold truncate max-w-[120px]'>
+              🚜 {data.farm_name || 'Direct Farm'}
         </div>
         <div>
             {

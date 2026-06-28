@@ -74,13 +74,37 @@ export async function calculateDeliveryFeeInternal(addressId, listItems, deliver
         }
 
         if (maxDistance <= 0) maxDistance = 5;
-        const calculatedFee = Math.round(maxDistance * 8);
+
+        // Calculate order subtotal to check ₹200 threshold
+        const orderSubtotal = listItems.reduce((sum, item) => {
+            const prod = item.productId || item;
+            const itemPrice = prod.price || 0;
+            const discount = prod.discount || 0;
+            const finalPrice = itemPrice - (itemPrice * discount / 100);
+            return sum + (finalPrice * (item.quantity || 1));
+        }, 0);
+
+        let calculatedFee = 0;
+        let isFree = false;
+        let reason = "";
+
+        if (maxDistance > 10) {
+            calculatedFee = 60;
+        } else {
+            if (orderSubtotal < 200) {
+                calculatedFee = 30;
+            } else {
+                calculatedFee = 0;
+                isFree = true;
+                reason = "Order above ₹200 (under 10km)";
+            }
+        }
 
         return {
             distance: Math.round(maxDistance * 10) / 10,
             deliveryFee: calculatedFee,
-            isFreeEligible: false,
-            freeReason: ""
+            isFreeEligible: isFree,
+            freeReason: reason
         };
     } catch (err) {
         console.error("Delivery calculation error:", err);
@@ -285,11 +309,35 @@ export async function checkoutOrderController(request, response) {
             await rNotification.save();
         }
 
-        // Dispatch transactional email confirmation
+        // Dispatch transactional email confirmation with formal branding
         await sendEmail({
             sendTo: user.email,
-            subject: `DesiKit - Order Placed Successfully #${orderId}`,
-            html: `<p>Hello ${user.name}, your DesiKit order <strong>${orderId}</strong> has been successfully placed. Delivery Slot: <strong>${delivery_slot || 'standard'}</strong>. Delivery Verification OTP: <strong>${deliveryOtp}</strong></p>`
+            subject: `DesiKit – Order Placed Successfully #${orderId}`,
+            html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 30px 20px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #fafdfa;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <h1 style="color: #16a34a; margin: 0; font-size: 28px;">DesiKit</h1>
+                    <p style="color: #15803d; font-size: 14px; margin: 4px 0 0 0; font-weight: bold;">From Farm to Family</p>
+                </div>
+                <div style="background-color: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border: 1px solid #e8ebd9;">
+                    <h2 style="color: #16a34a; margin-top: 0; font-size: 20px; text-align: center;">Order Confirmed!</h2>
+                    <p style="font-size: 15px; color: #1e293b;">Hello <strong>${user.name}</strong>,</p>
+                    <p style="font-size: 14px; color: #475569; line-height: 1.6;">Thank you for your purchase! Your order <strong>#${orderId}</strong> has been successfully received by our farm networks and is being prepared for dispatch.</p>
+                    
+                    <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; font-size: 14px;">
+                        <p style="margin: 0 0 8px 0;"><strong>Delivery Slot:</strong> ${delivery_slot || 'Standard Dispatch (Within 24 Hours)'}</p>
+                        <p style="margin: 0 0 8px 0;"><strong>Verification OTP (Share with rider):</strong> <strong style="color: #16a34a; font-size: 16px;">${deliveryOtp}</strong></p>
+                        <p style="margin: 0;"><strong>Total Bill Amount:</strong> ₹${totalAmt}</p>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; line-height: 1.5;">You can track your order status in real-time on your dashboard. Please keep the verification OTP safe and share it with the delivery partner upon arrival.</p>
+                </div>
+                <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #64748b;">
+                    <p style="margin: 0;">Support local farms. Supporting direct food ecosystems.</p>
+                    <p style="margin: 4px 0 0 0;">© ${new Date().getFullYear()} DesiKit App. All Rights Reserved.</p>
+                </div>
+            </div>
+            `
         });
 
         return response.json({
@@ -317,11 +365,28 @@ export async function getOrderItemsController(request, response) {
             .populate('delivery_address')
             .sort({ createdAt: -1 });
 
+        const hydratedList = [];
+        for (const order of list) {
+            const orderObj = order.toObject();
+            if (orderObj.items && orderObj.items.length > 0) {
+                const firstItem = orderObj.items[0];
+                const farmerId = firstItem.farmerId;
+                if (farmerId) {
+                    const farmer = await FarmerModel.findOne({ user_id: farmerId });
+                    if (farmer) {
+                        orderObj.farm_address = farmer.farm_address;
+                        orderObj.farm_name = farmer.farm_name;
+                    }
+                }
+            }
+            hydratedList.push(orderObj);
+        }
+
         return response.json({
             message: "Orders list retrieved successfully",
             error: false,
             success: true,
-            data: list
+            data: hydratedList
         });
     } catch (error) {
         return response.status(500).json({

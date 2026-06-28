@@ -5,6 +5,8 @@ dotenv.config()
 import cookieParser from 'cookie-parser'
 import morgan from 'morgan'
 import helmet from 'helmet'
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 import connectDB from './config/connectDB.js'
 import userRouter from './route/user.route.js'
 import categoryRouter from './route/category.route.js'
@@ -29,6 +31,14 @@ import bannerRouter from './route/banner.route.js'
 import desikitRouter from './route/desikit.route.js'
 
 const app = express()
+const server = createServer(app)
+const io = new Server(server, {
+    cors: {
+        origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+        methods: ["GET", "POST", "PUT"]
+    }
+})
+
 app.use(cors({
     credentials : true,
     origin : process.env.FRONTEND_URL || 'http://localhost:5173'
@@ -70,8 +80,32 @@ app.use('/api/notification', notificationRouter)
 app.use('/api/banner', bannerRouter)
 app.use('/api/desikit', desikitRouter)
 
+// Real-Time Socket Connection Handlers
+io.on('connection', (socket) => {
+    console.log(`Socket Client Connected: ${socket.id}`);
+
+    // Join room specific to an order so events are routed cleanly
+    socket.on('joinOrderTracker', (orderId) => {
+        socket.join(`order_${orderId}`);
+        console.log(`Socket ${socket.id} joined room order_${orderId}`);
+    });
+
+    // When delivery rider sends location update
+    socket.on('riderLocationUpdate', (data) => {
+        const { orderId, lat, lng } = data;
+        console.log(`Real-Time Location Broadcast for Order #${orderId}: ${lat}, ${lng}`);
+        // Broadcast location updates directly to all listening consumers in that room
+        socket.to(`order_${orderId}`).emit('liveRiderLocation', { lat, lng });
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`Socket Client Disconnected: ${socket.id}`);
+    });
+})
+
 connectDB().then(()=>{
-    app.listen(PORT,()=>{
+    server.listen(PORT,()=>{
         console.log("Server is running on port",PORT)
     })
 })
+

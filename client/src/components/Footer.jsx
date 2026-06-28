@@ -37,7 +37,7 @@ const Footer = () => {
             </div>
             <div>
                 <h3 className='font-semibold mb-3'>Connect</h3>
-                <p className='text-sm text-gray-300'>ishuy066@gmail.com</p>
+                <p className='text-sm text-gray-300'>desikitapp@gmail.com</p>
                 <p className='text-sm text-gray-300'>+91 7988826890</p>
                 <div className='flex items-center gap-4 mt-4 text-2xl text-gray-300'>
                     <a href='#' className='hover:text-white'><FaFacebook/></a>

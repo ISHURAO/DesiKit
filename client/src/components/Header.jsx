@@ -25,8 +25,8 @@ const Header = () => {
     const [openCartSection,setOpenCartSection] = useState(false)
     const [selectedLoc, setSelectedLoc] = useState(localStorage.getItem('desi_location') || 'Mathura')
 
-    useEffect(() => {
-        if (!localStorage.getItem('desi_location') && navigator.geolocation) {
+    const detectLocation = async () => {
+        if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
                     const lat = position.coords.latitude;
@@ -35,7 +35,7 @@ const Header = () => {
                         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
                         const data = await response.json();
                         if (data && data.address) {
-                            const detected = data.address.suburb || data.address.town || data.address.city || data.address.village || data.address.county || 'Phagwara';
+                            const detected = data.address.city || data.address.town || data.address.county || data.address.suburb || data.address.village || 'Phagwara';
                             localStorage.setItem('desi_location', detected);
                             setSelectedLoc(detected);
                             toast.success(`Detected location: ${detected}`, { icon: '📍' });
@@ -43,29 +43,49 @@ const Header = () => {
                             return;
                         }
                     } catch (err) {
-                        console.error("Reverse geocoding failed, using fallback:", err);
+                        console.error("Reverse geocoding failed, trying IP fallback:", err);
                     }
-                    
-                    // Fallback using latitude buckets
-                    let detected = 'Mathura';
-                    if (lat > 30) {
-                        detected = 'Ludhiana';
-                    } else if (lat > 29) {
-                        detected = 'Karnal';
-                    } else if (lat > 28) {
-                        detected = 'Delhi NCR';
-                    }
-                    localStorage.setItem('desi_location', detected);
-                    setSelectedLoc(detected);
-                    toast.success(`Detected location: ${detected}`, { icon: '📍' });
-                    window.location.reload();
+                    fallbackToIp();
                 },
                 (error) => {
-                    console.log("Geolocation error:", error);
+                    console.log("Geolocation error, trying IP fallback:", error);
+                    fallbackToIp();
                 }
             );
+        } else {
+            fallbackToIp();
+        }
+    };
+
+    const fallbackToIp = async () => {
+        try {
+            const response = await fetch('https://ipapi.co/json/');
+            const data = await response.json();
+            if (data && (data.city || data.region)) {
+                const detected = data.city || data.region || 'Phagwara';
+                localStorage.setItem('desi_location', detected);
+                setSelectedLoc(detected);
+                toast.success(`Detected location: ${detected}`, { icon: '📍' });
+                window.location.reload();
+            }
+        } catch (err) {
+            console.error("IP geolocation failed:", err);
+            localStorage.setItem('desi_location', 'Phagwara');
+            setSelectedLoc('Phagwara');
+            window.location.reload();
+        }
+    };
+
+    useEffect(() => {
+        if (!localStorage.getItem('desi_location')) {
+            detectLocation();
         }
     }, []);
+
+    const handleForceRedetect = () => {
+        localStorage.removeItem('desi_location');
+        detectLocation();
+    };
 
     const handleLocChange = (e) => {
         const val = e.target.value;
@@ -107,8 +127,12 @@ const Header = () => {
                                 className='h-14 w-auto'
                             />
                         </Link>
-                        <div className='hidden lg:flex items-center gap-2 bg-desikit-green/5 border border-desikit-green/10 px-3.5 py-1.5 rounded-full select-none'>
-                            <span className="text-xs font-bold text-desikit-green">📍</span>
+                        <div 
+                            onClick={handleForceRedetect}
+                            title="Click to re-detect location"
+                            className='hidden lg:flex items-center gap-2 bg-desikit-green/5 border border-desikit-green/10 px-3.5 py-1.5 rounded-full select-none cursor-pointer hover:bg-desikit-green/10 transition-colors'
+                        >
+                            <span className="text-xs font-bold text-desikit-green animate-pulse">📍</span>
                             <span className="text-xs font-extrabold text-desikit-green tracking-wide">{selectedLoc}</span>
                         </div>
                     </div>

@@ -1,5 +1,36 @@
 import ProductModel from "../models/product.model.js";
 import UserModel from "../models/user.model.js";
+import FarmerModel from "../models/farmer.model.js";
+
+async function hydrateProductsWithFarmDetails(products) {
+    if (!products) return products;
+    const isArray = Array.isArray(products);
+    const productList = isArray ? products : [products];
+    
+    const hydrated = [];
+    for (let product of productList) {
+        if (!product) continue;
+        const prodObj = product.toObject ? product.toObject() : product;
+        
+        // Resolve farmer user reference
+        const farmerUser = prodObj.farmer_id;
+        const fId = farmerUser?._id || farmerUser;
+        
+        if (fId) {
+            const farmer = await FarmerModel.findOne({ user_id: fId });
+            if (farmer) {
+                prodObj.farm_name = farmer.farm_name;
+                prodObj.farm_address = farmer.farm_address;
+            } else {
+                prodObj.farm_name = "Krishna Organic Dairy";
+            }
+        } else {
+            prodObj.farm_name = "DesiKit Partner Farm";
+        }
+        hydrated.push(prodObj);
+    }
+    return isArray ? hydrated : hydrated[0];
+}
 
 export const createProductController = async(request,response)=>{
     try {
@@ -80,13 +111,15 @@ export const getProductController = async(request,response)=>{
             ProductModel.countDocuments(query)
         ])
 
+        const hydratedData = await hydrateProductsWithFarmDetails(data);
+
         return response.json({
             message : "Product data retrieved",
             error : false,
             success : true,
             totalCount : totalCount,
             totalNoPage : Math.ceil( totalCount / limit),
-            data : data
+            data : hydratedData
         })
     } catch (error) {
         return response.status(500).json({
@@ -110,10 +143,11 @@ export const getProductByCategory = async(request,response)=>{
         }
 
         const data = await ProductModel.find({ category: id }).populate('category subCategory farmer_id', 'name farm_name');
+        const hydratedData = await hydrateProductsWithFarmDetails(data);
 
         return response.json({
             message : "Category wise product list",
-            data : data,
+            data : hydratedData,
             error : false,
             success : true
         })
@@ -144,10 +178,11 @@ export const getProductByCategoryAndSubCategory = async(request,response)=>{
         }
 
         const data = await ProductModel.find(query).populate('category subCategory farmer_id', 'name farm_name');
+        const hydratedData = await hydrateProductsWithFarmDetails(data);
 
         return response.json({
             message : "Subcategory wise product list",
-            data : data,
+            data : hydratedData,
             error : false,
             success : true
         })
@@ -173,10 +208,11 @@ export const getProductDetails = async(request,response)=>{
         }
 
         const product = await ProductModel.findById(productId).populate('category subCategory farmer_id', 'name email mobile farm_name farm_address')
+        const hydratedProduct = await hydrateProductsWithFarmDetails(product);
 
         return response.json({
             message : "Product details retrieved",
-            data : product,
+            data : hydratedProduct,
             error : false,
             success : true
         })
@@ -273,9 +309,10 @@ export const searchProduct = async(request,response)=>{
         let query = {}
         if(search){
             query = {
-                $text : {
-                    $search : search
-                }
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { description: { $regex: search, $options: 'i' } }
+                ]
             }
         }
 
@@ -284,9 +321,11 @@ export const searchProduct = async(request,response)=>{
             ProductModel.countDocuments(query)
         ])
 
+        const hydratedData = await hydrateProductsWithFarmDetails(data);
+
         return response.json({
             message : "Search results",
-            data : data,
+            data : hydratedData,
             totalCount : dataCount,
             totalPage : Math.ceil(dataCount/limit),
             success : true,

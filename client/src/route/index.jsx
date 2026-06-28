@@ -8,6 +8,7 @@ import ForgotPassword from "../pages/ForgotPassword";
 import OtpVerification from "../pages/OtpVerification";
 import ResetPassword from "../pages/ResetPassword";
 import UserMenuMobile from "../pages/UserMenuMobile";
+import VerifyEmail from "../pages/VerifyEmail";
 import Dashboard from "../layouts/Dashboard";
 import Profile from "../pages/Profile";
 import MyOrders from "../pages/MyOrders";
@@ -71,6 +72,10 @@ const router = createBrowserRouter([
             {
                 path : "reset-password",
                 element : <ResetPassword/>
+            },
+            {
+                path : "verify-email",
+                element : <VerifyEmail/>
             },
             {
                 path : "user",

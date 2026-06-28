@@ -190,7 +190,7 @@ const productsData = [
   {
     _id: "65cf77777777777777777777",
     name: "Murrah Buffalo Creamy Milk",
-    image: [ "https://images.unsplash.com/photo-1563636619-e9143da7973b?q=80&w=600" ],
+    image: [ "https://images.unsplash.com/photo-1596733430284-f7437764b1a9?q=80&w=600" ],
     category: "65cf55555555555555555551",
     subCategory: "65cf66666666666666666661",
     unit: "1 Litre",
@@ -204,7 +204,7 @@ const productsData = [
   {
     _id: "65cf77777777777777777778",
     name: "Jaffrabadi Rich Buffalo Milk",
-    image: [ "https://images.unsplash.com/photo-1596733430284-f7437764b1a9?q=80&w=600" ],
+    image: [ "https://images.unsplash.com/photo-1563636619-e9143da7973b?q=80&w=600" ],
     category: "65cf55555555555555555551",
     subCategory: "65cf66666666666666666661",
     unit: "1 Litre",
